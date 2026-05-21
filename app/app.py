@@ -5,10 +5,17 @@ import pandas as pd
 import psycopg2
 import streamlit as st
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+# ---------------------------------
+# CONFIGURACIÓN GENERAL
+# ---------------------------------
 
-# PostgreSQL connection
+UPLOAD_DIR = Path("uploads/productos")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------
+# CONEXIÓN A POSTGRESQL
+# ---------------------------------
+
 conn = psycopg2.connect(
     host=os.getenv("DB_HOST"),
     database=os.getenv("DB_NAME"),
@@ -18,88 +25,121 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
+# ---------------------------------
+# TABLA INVENTARIO
+# ---------------------------------
+
 cur.execute("""
-CREATE TABLE IF NOT EXISTS productos (
+CREATE TABLE IF NOT EXISTS inventario (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(100),
-    precio NUMERIC(10,2)
+    precio NUMERIC(10,2),
+    estado VARCHAR(20),
+    imagen VARCHAR(255)
 )
 """)
 
 conn.commit()
 
-st.set_page_config(page_title="CRUD Demo", layout="wide")
+# ---------------------------------
+# INTERFAZ STREAMLIT
+# ---------------------------------
 
-st.title("🐳 Streamlit + PostgreSQL CRUD")
+st.set_page_config(
+    page_title="Inventario Cloud",
+    layout="wide"
+)
 
-tab1, tab2 = st.tabs(["CRUD Productos", "Subir Archivos"])
+st.title("☁️ Sistema Cloud de Inventario Digital")
+st.caption("Plataforma de transformación digital para negocios pequeños")
+
+tab1, tab2, tab3 = st.tabs(
+    ["📦 Registrar producto", "📊 Inventario", "🖼️ Evidencias"]
+)
+
+# =================================
+# REGISTRAR PRODUCTO
+# =================================
 
 with tab1:
-    st.header("➕ Crear producto")
+    st.subheader("Registro de nuevo producto")
 
-    with st.form("crear_producto"):
-        nombre = st.text_input("Nombre")
+    with st.form("form_producto"):
+        nombre = st.text_input("Nombre del producto")
         precio = st.number_input("Precio", min_value=0.0)
-        submitted = st.form_submit_button("Guardar")
+        estado = st.selectbox(
+            "Estado",
+            ["Disponible", "Agotado"]
+        )
+        imagen = st.file_uploader(
+            "Imagen del producto (opcional)",
+            type=["jpg", "png", "jpeg"]
+        )
 
-        if submitted:
+        guardar = st.form_submit_button("Registrar producto")
+
+        if guardar:
+            ruta_imagen = None
+
+            if imagen:
+                ruta_imagen = UPLOAD_DIR / imagen.name
+                with open(ruta_imagen, "wb") as f:
+                    f.write(imagen.getbuffer())
+
             cur.execute(
-                "INSERT INTO productos (nombre, precio) VALUES (%s, %s)",
-                (nombre, precio)
+                """
+                INSERT INTO inventario
+                (nombre, precio, estado, imagen)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (nombre, precio, estado, str(ruta_imagen))
             )
             conn.commit()
-            st.success("Producto creado")
 
-    st.divider()
+            st.success("Producto registrado en la nube")
 
-    st.header("📋 Lista de productos")
-
-    df = pd.read_sql("SELECT * FROM productos ORDER BY id", conn)
-    st.dataframe(df, use_container_width=True)
-
-    st.divider()
-
-    st.header("✏️ Actualizar producto")
-
-    product_id = st.number_input("ID producto", min_value=1, step=1)
-    nuevo_nombre = st.text_input("Nuevo nombre")
-    nuevo_precio = st.number_input("Nuevo precio", min_value=0.0)
-
-    if st.button("Actualizar"):
-        cur.execute(
-            """
-            UPDATE productos
-            SET nombre=%s, precio=%s
-            WHERE id=%s
-            """,
-            (nuevo_nombre, nuevo_precio, product_id)
-        )
-        conn.commit()
-        st.success("Producto actualizado")
-
-    st.divider()
-
-    st.header("🗑️ Eliminar producto")
-
-    delete_id = st.number_input("ID a eliminar", min_value=1, step=1)
-
-    if st.button("Eliminar"):
-        cur.execute(
-            "DELETE FROM productos WHERE id=%s",
-            (delete_id,)
-        )
-        conn.commit()
-        st.warning("Producto eliminado")
+# =================================
+# INVENTARIO
+# =================================
 
 with tab2:
-    st.header("📂 Subida de archivos")
+    st.subheader("Inventario digital")
 
-    uploaded_file = st.file_uploader("Selecciona un archivo")
+    filtro = st.selectbox(
+        "Filtrar por estado",
+        ["Todos", "Disponible", "Agotado"]
+    )
 
-    if uploaded_file is not None:
-        file_path = UPLOAD_DIR / uploaded_file.name
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+    if filtro == "Todos":
+        df = pd.read_sql(
+            "SELECT id, nombre, precio, estado FROM inventario",
+            conn
+        )
+    else:
+        df = pd.read_sql(
+            "SELECT id, nombre, precio, estado FROM inventario WHERE estado = %s",
+            conn,
+            params=(filtro,)
+        )
 
-        st.success(f"Archivo guardado en {file_path}")
-        st.write(os.listdir(UPLOAD_DIR))
+    st.dataframe(df, use_container_width=True)
+
+# =================================
+# EVIDENCIAS VISUALES
+# =================================
+
+with tab3:
+    st.subheader("Evidencias visuales de productos")
+
+    cur.execute(
+        "SELECT nombre, imagen FROM inventario WHERE imagen IS NOT NULL"
+    )
+
+    registros = cur.fetchall()
+
+    if registros:
+        for nombre, imagen in registros:
+            st.markdown(f"**{nombre}**")
+            st.image(imagen, width=250)
+    else:
+        st.info("No hay imágenes registradas")
