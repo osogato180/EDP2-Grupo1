@@ -1,13 +1,19 @@
 import os
+import json
 import psycopg2
 import redis
 import streamlit as st
-import json
 
 # =========================
-# CONFIG
+# CONFIG STREAMLIT
 # =========================
-st.set_page_config(page_title="Inventario Cloud", page_icon="📦")
+st.set_page_config(
+    page_title="Inventario Cloud",
+    page_icon="📦",
+    layout="centered"
+)
+
+st.title("📦 Sistema de Inventario en la Nube")
 
 # =========================
 # CONEXIONES
@@ -39,11 +45,12 @@ CREATE TABLE IF NOT EXISTS productos (
 conn.commit()
 
 # =========================
-# UTILIDADES
+# FUNCIONES
 # =========================
 def generar_id():
     cursor.execute("SELECT COUNT(*) FROM productos")
-    return f"CODINV{cursor.fetchone()[0] + 1:02d}"
+    total = cursor.fetchone()[0] + 1
+    return f"CODINV{total:02d}"
 
 def limpiar_cache():
     redis_client.delete("productos")
@@ -54,90 +61,96 @@ def obtener_productos():
         return json.loads(cache)
 
     cursor.execute("SELECT * FROM productos ORDER BY id")
-    productos = cursor.fetchall()
-
-    redis_client.set("productos", json.dumps(productos), ex=30)
-    return productos
-
-# =========================
-# UI
-# =========================
-st.title("📦 Sistema de Inventario Cloud")
+    data = cursor.fetchall()
+    redis_client.set("productos", json.dumps(data), ex=60)
+    return data
 
 # =========================
-# AGREGAR
+# AGREGAR PRODUCTO
 # =========================
 st.header("➕ Agregar producto")
 
-with st.form("agregar", clear_on_submit=True):
-    nombre = st.text_input("Nombre")
+with st.form("form_agregar", clear_on_submit=True):
+    nombre = st.text_input("Nombre del producto")
     stock = st.number_input("Stock", min_value=0, step=1)
-    enviar = st.form_submit_button("Guardar")
+    guardar = st.form_submit_button("Guardar")
 
-    if enviar and nombre:
-        cursor.execute(
-            "INSERT INTO productos VALUES (%s, %s, %s)",
-            (generar_id(), nombre, stock)
-        )
-        conn.commit()
-        limpiar_cache()
-        st.success("Producto agregado")
-        st.rerun()
+    if guardar:
+        if nombre.strip() == "":
+            st.warning("⚠️ El nombre es obligatorio")
+        else:
+            cursor.execute(
+                "INSERT INTO productos VALUES (%s, %s, %s)",
+                (generar_id(), nombre, stock)
+            )
+            conn.commit()
+            limpiar_cache()
+            st.success("✅ Producto agregado")
+            st.rerun()
 
 # =========================
 # BUSCAR
 # =========================
 st.header("🔍 Buscar producto")
 
-buscar = st.text_input("Buscar por nombre o ID")
+buscar = st.text_input("Buscar por ID o nombre")
 productos = obtener_productos()
 
 if buscar:
-    encontrados = [
+    productos = [
         p for p in productos
         if buscar.lower() in p[0].lower()
         or buscar.lower() in p[1].lower()
     ]
-else:
-    encontrados = productos
 
 # =========================
-# LISTAR / EDITAR / ELIMINAR
+# EDITAR / ELIMINAR
 # =========================
-for p in encontrados:
-    col1, col2, col3 = st.columns([4, 2, 1])
+st.header("✏️ Editar / 🗑️ Eliminar producto")
+
+if productos:
+    ids = [p[0] for p in productos]
+    id_sel = st.selectbox("Selecciona el producto (CODINV)", ids)
+
+    producto = next(p for p in productos if p[0] == id_sel)
+
+    nuevo_nombre = st.text_input("Nombre", value=producto[1])
+    nuevo_stock = st.number_input("Stock", min_value=0, value=producto[2])
+
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.write(f"📦 {p[0]} | {p[1]} | Stock: {p[2]}")
+        if st.button("Actualizar"):
+            cursor.execute("""
+                UPDATE productos
+                SET nombre=%s, stock=%s
+                WHERE id=%s
+            """, (nuevo_nombre, nuevo_stock, id_sel))
+            conn.commit()
+            limpiar_cache()
+            st.success("✏️ Producto actualizado")
+            st.rerun()
 
     with col2:
-        nuevo_stock = st.number_input(
-            "Stock",
-            min_value=0,
-            value=p[2],
-            key=f"stock_{p[0]}"
-        )
-
-        if st.button("Actualizar", key=f"edit_{p[0]}"):
-            cursor.execute(
-                "UPDATE productos SET stock=%s WHERE id=%s",
-                (nuevo_stock, p[0])
-            )
+        if st.button("Eliminar"):
+            cursor.execute("DELETE FROM productos WHERE id=%s", (id_sel,))
             conn.commit()
             limpiar_cache()
-            st.success("Actualizado")
+            st.warning("🗑️ Producto eliminado")
             st.rerun()
+else:
+    st.info("No hay productos registrados")
 
-    with col3:
-        if st.button("Eliminar", key=f"del_{p[0]}"):
-            cursor.execute("DELETE FROM productos WHERE id=%s", (p[0],))
-            conn.commit()
-            limpiar_cache()
-            st.warning("Eliminado")
-            st.rerun()
+# =========================
+# LISTADO
+# =========================
+st.header("📋 Productos registrados")
+
+for p in productos:
+    st.write(f"📦 **{p[0]}** | {p[1]} | Stock: {p[2]}")
 
 # =========================
 # MÉTRICAS
 # =========================
-st.header("📊 Métricas")
-st.metric("Productos totales", len(productos))
+st.header("📊 Resumen")
+st.metric("Total de productos", len(productos))
