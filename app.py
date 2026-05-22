@@ -1,7 +1,7 @@
 import streamlit as st
 
 # =========================
-# CONFIGURACIÓN INICIAL
+# CONFIGURACIÓN
 # =========================
 st.set_page_config(
     page_title="Gestión de Inventario",
@@ -17,28 +17,42 @@ st.title("📦 Sistema de Gestión de Inventario")
 if "productos" not in st.session_state:
     st.session_state.productos = []
 
+if "contador_id" not in st.session_state:
+    st.session_state.contador_id = 1
+
 productos = st.session_state.productos
+
+# =========================
+# FUNCIÓN ID AUTOMÁTICO
+# =========================
+def generar_id():
+    cod = f"CODINV{st.session_state.contador_id:02d}"
+    st.session_state.contador_id += 1
+    return cod
 
 # =========================
 # AGREGAR PRODUCTO
 # =========================
 st.header("➕ Agregar producto")
 
-with st.form("form_producto"):
-    pid = st.number_input("ID del producto", min_value=1, step=1)
+with st.form("form_producto", clear_on_submit=True):
     nombre = st.text_input("Nombre del producto")
     stock = st.number_input("Stock disponible", min_value=0, step=1)
 
     submitted = st.form_submit_button("Guardar producto")
 
     if submitted:
-        productos.append({
-            "id": pid,
-            "nombre": nombre,
-            "stock": stock
-        })
-        st.success("✅ Producto agregado correctamente")
-        st.rerun()
+        if nombre.strip() == "":
+            st.warning("⚠️ El nombre no puede estar vacío")
+        else:
+            nuevo_producto = {
+                "id": generar_id(),
+                "nombre": nombre,
+                "stock": stock
+            }
+            productos.append(nuevo_producto)
+            st.success(f"✅ Producto agregado con ID {nuevo_producto['id']}")
+            st.rerun()
 
 # =========================
 # BUSCAR PRODUCTO
@@ -50,7 +64,7 @@ buscar = st.text_input("Buscar por ID o nombre")
 if buscar:
     resultados = [
         p for p in productos
-        if buscar.lower() in str(p["id"]).lower()
+        if buscar.lower() in p["id"].lower()
         or buscar.lower() in p["nombre"].lower()
     ]
 
@@ -61,7 +75,7 @@ if buscar:
         st.warning("❌ Producto no encontrado")
 
 # =========================
-# LISTAR Y ELIMINAR PRODUCTOS
+# LISTAR Y ELIMINAR
 # =========================
 st.header("🗑️ Productos registrados")
 
@@ -72,10 +86,10 @@ else:
         col1, col2 = st.columns([4, 1])
 
         with col1:
-            st.write(f"📦 ID: {p['id']} | {p['nombre']} | Stock: {p['stock']}")
+            st.write(f"📦 **{p['id']}** | {p['nombre']} | Stock: {p['stock']}")
 
         with col2:
-            if st.button("Eliminar", key=f"eliminar_{p['id']}"):
+            if st.button("Eliminar", key=f"del_{p['id']}"):
                 productos.pop(i)
                 st.success("🗑️ Producto eliminado")
                 st.rerun()
