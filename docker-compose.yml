@@ -52,9 +52,12 @@ services:
       - "8025:8025"
 
   prometheus:
-    image: prom/prometheus
-    ports:
-      - "9090:9090"
+  image: prom/prometheus
+  container_name: prometheus
+  volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  ports:
+    - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
 
