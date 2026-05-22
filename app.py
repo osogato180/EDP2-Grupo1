@@ -17,7 +17,12 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Prometheus
-start_http_server(8000)
+from prometheus_client import Counter, Gauge, start_http_server
+
+if "prometheus_started" not in st.session_state:
+    start_http_server(8000)
+    st.session_state.prometheus_started = True
+
 productos_creados = Counter("productos_creados", "Productos creados")
 stock_critico = Gauge("stock_critico", "Productos con stock bajo")
 
