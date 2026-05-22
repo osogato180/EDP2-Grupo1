@@ -1,34 +1,48 @@
+import os
+import psycopg2
 import streamlit as st
 
 # =========================
-# CONFIGURACIÓN
+# CONFIG STREAMLIT
 # =========================
 st.set_page_config(
-    page_title="Gestión de Inventario",
+    page_title="Inventario Cloud",
     page_icon="📦",
     layout="centered"
 )
 
-st.title("📦 Sistema de Gestión de Inventario")
+st.title("📦 Sistema de Inventario en la Nube")
 
 # =========================
-# ESTADO GLOBAL
+# CONEXIÓN BD
 # =========================
-if "productos" not in st.session_state:
-    st.session_state.productos = []
-
-if "contador_id" not in st.session_state:
-    st.session_state.contador_id = 1
-
-productos = st.session_state.productos
+conn = psycopg2.connect(
+    host=os.environ.get("DB_HOST"),
+    database=os.environ.get("DB_NAME"),
+    user=os.environ.get("DB_USER"),
+    password=os.environ.get("DB_PASSWORD")
+)
+cursor = conn.cursor()
 
 # =========================
-# FUNCIÓN ID AUTOMÁTICO
+# CREAR TABLA SI NO EXISTE
+# =========================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS productos (
+    id VARCHAR(20) PRIMARY KEY,
+    nombre VARCHAR(100),
+    stock INTEGER
+)
+""")
+conn.commit()
+
+# =========================
+# GENERAR ID AUTOMÁTICO
 # =========================
 def generar_id():
-    cod = f"CODINV{st.session_state.contador_id:02d}"
-    st.session_state.contador_id += 1
-    return cod
+    cursor.execute("SELECT COUNT(*) FROM productos")
+    count = cursor.fetchone()[0] + 1
+    return f"CODINV{count:02d}"
 
 # =========================
 # AGREGAR PRODUCTO
@@ -37,20 +51,19 @@ st.header("➕ Agregar producto")
 
 with st.form("form_agregar", clear_on_submit=True):
     nombre = st.text_input("Nombre del producto")
-    stock = st.number_input("Stock disponible", min_value=0, step=1)
+    stock = st.number_input("Stock", min_value=0, step=1)
+    guardar = st.form_submit_button("Guardar")
 
-    submitted = st.form_submit_button("Guardar producto")
-
-    if submitted:
+    if guardar:
         if nombre.strip() == "":
-            st.warning("⚠️ El nombre no puede estar vacío")
+            st.warning("⚠️ El nombre es obligatorio")
         else:
-            productos.append({
-                "id": generar_id(),
-                "nombre": nombre,
-                "stock": stock
-            })
-            st.success("✅ Producto agregado correctamente")
+            cursor.execute(
+                "INSERT INTO productos VALUES (%s, %s, %s)",
+                (generar_id(), nombre, stock)
+            )
+            conn.commit()
+            st.success("✅ Producto guardado")
             st.rerun()
 
 # =========================
@@ -60,73 +73,73 @@ st.header("🔍 Buscar producto")
 
 buscar = st.text_input("Buscar por ID o nombre")
 
+cursor.execute("SELECT * FROM productos")
+productos = cursor.fetchall()
+
 if buscar:
-    resultados = [
+    encontrados = [
         p for p in productos
-        if buscar.lower() in p["id"].lower()
-        or buscar.lower() in p["nombre"].lower()
+        if buscar.lower() in p[0].lower()
+        or buscar.lower() in p[1].lower()
     ]
 
-    if resultados:
-        for p in resultados:
-            st.info(f"ID: {p['id']} | {p['nombre']} | Stock: {p['stock']}")
+    if encontrados:
+        for p in encontrados:
+            st.info(f"{p[0]} | {p[1]} | Stock: {p[2]}")
     else:
-        st.warning("❌ Producto no encontrado")
+        st.warning("❌ No encontrado")
 
 # =========================
 # EDITAR PRODUCTO
 # =========================
 st.header("✏️ Editar producto")
 
-ids = [p["id"] for p in productos]
+ids = [p[0] for p in productos]
 
-if not ids:
-    st.info("No hay productos para editar")
-else:
-    id_seleccionado = st.selectbox("Selecciona el ID del producto", ids)
+if ids:
+    id_sel = st.selectbox("Selecciona ID", ids)
 
-    producto = next(p for p in productos if p["id"] == id_seleccionado)
+    cursor.execute("SELECT * FROM productos WHERE id=%s", (id_sel,))
+    prod = cursor.fetchone()
 
     with st.form("form_editar"):
-        nuevo_nombre = st.text_input("Nuevo nombre", value=producto["nombre"])
-        nuevo_stock = st.number_input(
-            "Nuevo stock",
-            min_value=0,
-            step=1,
-            value=producto["stock"]
-        )
+        nuevo_nombre = st.text_input("Nombre", value=prod[1])
+        nuevo_stock = st.number_input("Stock", min_value=0, value=prod[2])
 
-        editar = st.form_submit_button("Actualizar producto")
+        actualizar = st.form_submit_button("Actualizar")
 
-        if editar:
-            producto["nombre"] = nuevo_nombre
-            producto["stock"] = nuevo_stock
-            st.success("✏️ Producto actualizado correctamente")
+        if actualizar:
+            cursor.execute("""
+                UPDATE productos
+                SET nombre=%s, stock=%s
+                WHERE id=%s
+            """, (nuevo_nombre, nuevo_stock, id_sel))
+            conn.commit()
+            st.success("✏️ Producto actualizado")
             st.rerun()
+else:
+    st.info("No hay productos")
 
 # =========================
 # LISTAR Y ELIMINAR
 # =========================
 st.header("🗑️ Productos registrados")
 
-if not productos:
-    st.info("No hay productos registrados")
-else:
-    for i, p in enumerate(productos):
-        col1, col2 = st.columns([4, 1])
+for p in productos:
+    col1, col2 = st.columns([4, 1])
 
-        with col1:
-            st.write(f"📦 **{p['id']}** | {p['nombre']} | Stock: {p['stock']}")
+    with col1:
+        st.write(f"📦 **{p[0]}** | {p[1]} | Stock: {p[2]}")
 
-        with col2:
-            if st.button("Eliminar", key=f"del_{p['id']}"):
-                productos.pop(i)
-                st.success("🗑️ Producto eliminado")
-                st.rerun()
+    with col2:
+        if st.button("Eliminar", key=p[0]):
+            cursor.execute("DELETE FROM productos WHERE id=%s", (p[0],))
+            conn.commit()
+            st.success("🗑️ Eliminado")
+            st.rerun()
 
 # =========================
 # MÉTRICAS
 # =========================
 st.header("📊 Resumen")
-
-st.metric("Total de productos", len(productos))
+st.metric("Total productos", len(productos))
