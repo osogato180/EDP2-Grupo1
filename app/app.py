@@ -173,10 +173,10 @@ actualizar_metrica_stock(productos)
 # ===============================
 st.header("➕ Agregar producto")
 
-with st.form("form_agregar"):
-    nombre = st.text_input("Nombre del producto")
-    stock = st.number_input("Stock", min_value=0, step=1)
-    precio = st.number_input("Precio", min_value=0.0, step=0.1)
+with st.form("form_agregar", clear_on_submit=True):
+    nombre = st.text_input("Nombre", key="nombre_nuevo")
+    stock = st.number_input("Stock", min_value=0, key="stock_nuevo")
+    precio = st.number_input("Precio", min_value=0.0, key="precio_nuevo")
     submit = st.form_submit_button("Agregar")
 
     if submit:
@@ -192,12 +192,11 @@ with st.form("form_agregar"):
         cachear_productos(productos)
 
         productos_creados.inc()
-        actualizar_metrica_stock(productos)
 
         if stock <= STOCK_MINIMO:
             enviar_alerta_stock(nuevo)
 
-        st.success("✅ Producto agregado correctamente")
+        st.success("Producto agregado correctamente")
         st.rerun()
 
 # ===============================

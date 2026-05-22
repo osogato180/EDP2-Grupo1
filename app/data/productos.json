@@ -22,5 +22,17 @@
         "nombre": "Melocoton",
         "stock": 300,
         "precio": 5.0
+    },
+    {
+        "id": "CODINV05",
+        "nombre": "Uvas",
+        "stock": 1000,
+        "precio": 3.0
+    },
+    {
+        "id": "CODINV06",
+        "nombre": "Naranjas",
+        "stock": 300,
+        "precio": 4.5
     }
 ]
