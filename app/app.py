@@ -23,29 +23,44 @@ MAILHOG_HOST = "mailhog"
 MAILHOG_PORT = 1025
 
 # ===============================
-# PROMETHEUS
+# PROMETHEUS (SEGURO PARA STREAMLIT)
 # ===============================
+from prometheus_client import Counter, Gauge, start_http_server, REGISTRY
+
+def get_or_create_counter(name, description):
+    try:
+        return Counter(name, description)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+def get_or_create_gauge(name, description):
+    try:
+        return Gauge(name, description)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+# Iniciar servidor una sola vez
 try:
     start_http_server(8001)
 except OSError:
-    pass  # evita error si el puerto ya está en uso
+    pass
 
-productos_creados = Counter(
+productos_creados = get_or_create_counter(
     "productos_creados_total",
     "Cantidad total de productos creados"
 )
 
-productos_editados = Counter(
+productos_editados = get_or_create_counter(
     "productos_editados_total",
     "Cantidad total de productos editados"
 )
 
-productos_eliminados = Counter(
+productos_eliminados = get_or_create_counter(
     "productos_eliminados_total",
     "Cantidad total de productos eliminados"
 )
 
-stock_bajo = Gauge(
+stock_bajo = get_or_create_gauge(
     "productos_stock_bajo",
     "Cantidad de productos con stock bajo"
 )
