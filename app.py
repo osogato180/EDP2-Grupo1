@@ -18,13 +18,26 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Prometheus
 from prometheus_client import Counter, Gauge, start_http_server
+import streamlit as st
 
+# Iniciar Prometheus solo una vez
 if "prometheus_started" not in st.session_state:
     start_http_server(8000)
     st.session_state.prometheus_started = True
 
-productos_creados = Counter("productos_creados", "Productos creados")
-stock_critico = Gauge("stock_critico", "Productos con stock bajo")
+# Crear métricas SOLO una vez
+if "metricas_iniciadas" not in st.session_state:
+    st.session_state.productos_creados = Counter(
+        "productos_creados", "Productos creados"
+    )
+    st.session_state.stock_critico = Gauge(
+        "stock_critico", "Productos con stock bajo"
+    )
+    st.session_state.metricas_iniciadas = True
+
+# Referencias
+productos_creados = st.session_state.productos_creados
+stock_critico = st.session_state.stock_critico
 
 # DB
 conn = psycopg2.connect(
