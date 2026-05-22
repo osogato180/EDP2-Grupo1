@@ -6,14 +6,14 @@ import psycopg2
 import streamlit as st
 
 # ---------------------------------
-# CONFIGURACIÓN GENERAL
+# CONFIG
 # ---------------------------------
 
 UPLOAD_DIR = Path("uploads/productos")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------
-# CONEXIÓN A POSTGRESQL
+# DB CONNECTION
 # ---------------------------------
 
 conn = psycopg2.connect(
@@ -26,7 +26,7 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 
 # ---------------------------------
-# TABLA INVENTARIO
+# TABLE
 # ---------------------------------
 
 cur.execute("""
@@ -35,52 +35,58 @@ CREATE TABLE IF NOT EXISTS inventario (
     nombre VARCHAR(100),
     precio NUMERIC(10,2),
     estado VARCHAR(20),
-    imagen VARCHAR(255)
+    imagen TEXT
 )
 """)
 
 conn.commit()
 
 # ---------------------------------
-# INTERFAZ STREAMLIT
+# SAFE IMAGE HANDLER
 # ---------------------------------
 
-st.set_page_config(
-    page_title="Inventario Cloud",
-    layout="wide"
-)
+def mostrar_imagen_segura(ruta):
+    if not ruta:
+        return False
+    if str(ruta).lower() == "none":
+        return False
+    path = Path(ruta)
+    if not path.exists():
+        return False
+    st.image(str(path), width=250)
+    return True
 
-st.title("☁️ Sistema Cloud de Inventario Digital")
-st.caption("Plataforma de transformación digital para gestión de productos en la nube")
+# ---------------------------------
+# UI
+# ---------------------------------
 
-tab1, tab2, tab3 = st.tabs(
-    ["📦 Registrar producto", "📊 Inventario", "🖼️ Evidencias visuales"]
-)
+st.set_page_config(page_title="Inventario Cloud", layout="wide")
+st.title("☁️ Plataforma Cloud de Inventario Inteligente")
+st.caption("Caso real de transformación digital con arquitectura escalable")
+
+tab1, tab2, tab3 = st.tabs([
+    "📦 Registro",
+    "📊 Inventario",
+    "🖼️ Evidencias"
+])
 
 # =================================
-# REGISTRAR PRODUCTO
+# REGISTRO
 # =================================
 
 with tab1:
-    st.subheader("Registro de producto")
-
-    with st.form("form_producto"):
-        nombre = st.text_input("Nombre del producto")
+    with st.form("form_registro"):
+        nombre = st.text_input("Producto")
         precio = st.number_input("Precio", min_value=0.0)
         estado = st.selectbox("Estado", ["Disponible", "Agotado"])
-        imagen = st.file_uploader(
-            "Imagen del producto (opcional)",
-            type=["jpg", "png", "jpeg"]
-        )
-
-        guardar = st.form_submit_button("Registrar")
+        imagen = st.file_uploader("Imagen (opcional)", type=["png", "jpg", "jpeg"])
+        guardar = st.form_submit_button("Guardar")
 
         if guardar:
-            ruta_imagen = None
-
+            ruta = None
             if imagen:
-                ruta_imagen = UPLOAD_DIR / imagen.name
-                with open(ruta_imagen, "wb") as f:
+                ruta = UPLOAD_DIR / imagen.name
+                with open(ruta, "wb") as f:
                     f.write(imagen.getbuffer())
 
             cur.execute(
@@ -88,9 +94,8 @@ with tab1:
                 INSERT INTO inventario (nombre, precio, estado, imagen)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (nombre, precio, estado, str(ruta_imagen) if ruta_imagen else None)
+                (nombre, precio, estado, str(ruta) if ruta else None)
             )
-
             conn.commit()
             st.success("Producto registrado correctamente")
 
@@ -99,47 +104,21 @@ with tab1:
 # =================================
 
 with tab2:
-    st.subheader("Inventario en la nube")
-
-    filtro = st.selectbox(
-        "Filtrar por estado",
-        ["Todos", "Disponible", "Agotado"]
+    df = pd.read_sql(
+        "SELECT id, nombre, precio, estado FROM inventario ORDER BY id",
+        conn
     )
-
-    if filtro == "Todos":
-        df = pd.read_sql(
-            "SELECT id, nombre, precio, estado FROM inventario ORDER BY id",
-            conn
-        )
-    else:
-        df = pd.read_sql(
-            "SELECT id, nombre, precio, estado FROM inventario WHERE estado = %s",
-            conn,
-            params=(filtro,)
-        )
-
     st.dataframe(df, use_container_width=True)
 
 # =================================
-# EVIDENCIAS VISUALES
+# EVIDENCIAS
 # =================================
 
 with tab3:
-    st.subheader("Evidencias visuales de productos")
+    cur.execute("SELECT nombre, imagen FROM inventario")
+    rows = cur.fetchall()
 
-    cur.execute(
-        "SELECT nombre, imagen FROM inventario WHERE imagen IS NOT NULL"
-    )
-
-    registros = cur.fetchall()
-
-    if registros:
-        for nombre, imagen in registros:
-            st.markdown(f"**{nombre}**")
-
-            if imagen and Path(imagen).exists():
-                st.image(imagen, width=250)
-            else:
-                st.warning("Imagen no disponible")
-    else:
-        st.info("No hay evidencias registradas")
+    for nombre, imagen in rows:
+        st.markdown(f"**{nombre}**")
+        if not mostrar_imagen_segura(imagen):
+            st.info("Sin evidencia visual")
