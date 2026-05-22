@@ -1,65 +1,60 @@
 version: "3.9"
 
 services:
-
   app:
-    image: python:3.11-slim
+    build: .
     container_name: streamlit_app
-    working_dir: /app
     ports:
       - "8501:8501"
-    volumes:
-      - ./app:/app
-      - uploads:/app/uploads
-    environment:
-      DB_HOST: db
-      DB_NAME: inventario
-      DB_USER: admin
-      DB_PASSWORD: admin
-      REDIS_HOST: redis
-      RABBIT_HOST: rabbitmq
-    command: >
-      bash -c "
-      pip install -r requirements.txt &&
-      streamlit run app.py --server.address=0.0.0.0
-      "
     depends_on:
       - db
       - redis
       - rabbitmq
+    environment:
+      DB_HOST: db
+      DB_NAME: inventario
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    volumes:
+      - uploads:/app/uploads
 
   db:
-    image: postgres:14
+    image: postgres:15
+    container_name: postgres_db
     environment:
       POSTGRES_DB: inventario
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
 
   redis:
     image: redis:7
     container_name: redis_cache
+    ports:
+      - "6379:6379"
 
   rabbitmq:
     image: rabbitmq:3-management
     ports:
+      - "5672:5672"
       - "15672:15672"
 
   mailhog:
     image: mailhog/mailhog
     ports:
+      - "1025:1025"
       - "8025:8025"
 
   prometheus:
-  image: prom/prometheus
-  container_name: prometheus
-  volumes:
-    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-  ports:
-    - "9090:9090"
+    image: prom/prometheus
+    container_name: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
 
 volumes:
   postgres_data:
