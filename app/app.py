@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 # ===============================
 # CONFIGURACIÓN
 # ===============================
-DATA_FILE = "data/productos.json"
+RUTA_JSON = "data/productos.json"
 STOCK_MINIMO = 5
 
 REDIS_HOST = "redis"
@@ -30,10 +30,17 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=Tr
 # UTILIDADES
 # ===============================
 def cargar_productos():
-    if not os.path.exists(DATA_FILE):
+    if not os.path.exists(RUTA_JSON):
         return []
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+
+    try:
+        with open(RUTA_JSON, "r", encoding="utf-8") as f:
+            contenido = f.read().strip()
+            if not contenido:
+                return []
+            return json.loads(contenido)
+    except json.JSONDecodeError:
+        return []
 
 def guardar_productos(productos):
     with open(DATA_FILE, "w") as f:
