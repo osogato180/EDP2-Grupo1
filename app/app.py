@@ -51,10 +51,10 @@ st.set_page_config(
 )
 
 st.title("☁️ Sistema Cloud de Inventario Digital")
-st.caption("Plataforma de transformación digital para negocios pequeños")
+st.caption("Plataforma de transformación digital para gestión de productos en la nube")
 
 tab1, tab2, tab3 = st.tabs(
-    ["📦 Registrar producto", "📊 Inventario", "🖼️ Evidencias"]
+    ["📦 Registrar producto", "📊 Inventario", "🖼️ Evidencias visuales"]
 )
 
 # =================================
@@ -62,21 +62,18 @@ tab1, tab2, tab3 = st.tabs(
 # =================================
 
 with tab1:
-    st.subheader("Registro de nuevo producto")
+    st.subheader("Registro de producto")
 
     with st.form("form_producto"):
         nombre = st.text_input("Nombre del producto")
         precio = st.number_input("Precio", min_value=0.0)
-        estado = st.selectbox(
-            "Estado",
-            ["Disponible", "Agotado"]
-        )
+        estado = st.selectbox("Estado", ["Disponible", "Agotado"])
         imagen = st.file_uploader(
             "Imagen del producto (opcional)",
             type=["jpg", "png", "jpeg"]
         )
 
-        guardar = st.form_submit_button("Registrar producto")
+        guardar = st.form_submit_button("Registrar")
 
         if guardar:
             ruta_imagen = None
@@ -88,22 +85,21 @@ with tab1:
 
             cur.execute(
                 """
-                INSERT INTO inventario
-                (nombre, precio, estado, imagen)
+                INSERT INTO inventario (nombre, precio, estado, imagen)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (nombre, precio, estado, str(ruta_imagen))
+                (nombre, precio, estado, str(ruta_imagen) if ruta_imagen else None)
             )
-            conn.commit()
 
-            st.success("Producto registrado en la nube")
+            conn.commit()
+            st.success("Producto registrado correctamente")
 
 # =================================
 # INVENTARIO
 # =================================
 
 with tab2:
-    st.subheader("Inventario digital")
+    st.subheader("Inventario en la nube")
 
     filtro = st.selectbox(
         "Filtrar por estado",
@@ -112,7 +108,7 @@ with tab2:
 
     if filtro == "Todos":
         df = pd.read_sql(
-            "SELECT id, nombre, precio, estado FROM inventario",
+            "SELECT id, nombre, precio, estado FROM inventario ORDER BY id",
             conn
         )
     else:
@@ -140,6 +136,10 @@ with tab3:
     if registros:
         for nombre, imagen in registros:
             st.markdown(f"**{nombre}**")
-            st.image(imagen, width=250)
+
+            if imagen and Path(imagen).exists():
+                st.image(imagen, width=250)
+            else:
+                st.warning("Imagen no disponible")
     else:
-        st.info("No hay imágenes registradas")
+        st.info("No hay evidencias registradas")
