@@ -3,19 +3,21 @@ version: "3.9"
 services:
   db:
     image: postgres:15
-    container_name: postgres_db
     environment:
       POSTGRES_DB: inventario
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+
   app:
     build: .
-    container_name: streamlit_app
     ports:
       - "8501:8501"
     environment:
@@ -23,8 +25,11 @@ services:
       DB_NAME: inventario
       DB_USER: admin
       DB_PASSWORD: admin123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       - db
+      - redis
 
 volumes:
   postgres_data:
