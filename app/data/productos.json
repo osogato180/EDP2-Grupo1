@@ -34,5 +34,11 @@
         "nombre": "Naranjas",
         "stock": 300,
         "precio": 4.5
+    },
+    {
+        "id": "CODINV07",
+        "nombre": "Mandarina",
+        "stock": 50,
+        "precio": 1.5
     }
 ]
