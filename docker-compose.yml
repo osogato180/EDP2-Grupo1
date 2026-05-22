@@ -28,16 +28,12 @@ services:
     build: .
     ports:
       - "8501:8501"
-    environment:
-      DB_HOST: db
-      DB_NAME: inventario
-      DB_USER: admin
-      DB_PASSWORD: admin123
-      REDIS_HOST: redis
+    volumes:
+      - ./app/data:/app/data
     depends_on:
-      - db
       - redis
       - rabbitmq
+      - mailhog
 
   worker:
     build: .
