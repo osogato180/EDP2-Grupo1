@@ -138,9 +138,9 @@ if not df.empty:
                 st.image(row["imagen"], width=150)
 
         with col3:
-            if st.button("❌ Eliminar", key=row["id"]):
-                cur.execute("DELETE FROM productos WHERE id=%s", (row["id"],))
-                conn.commit()
-                st.experimental_rerun()
+            if st.button("Eliminar producto"):
+                productos.pop(index)
+                st.success("Producto eliminado correctamente")
+                st.rerun()
 else:
     st.info("No hay productos registrados")
