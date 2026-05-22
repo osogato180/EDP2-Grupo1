@@ -43,8 +43,8 @@ def cargar_productos():
         return []
 
 def guardar_productos(productos):
-    with open(DATA_FILE, "w") as f:
-        json.dump(productos, f, indent=4)
+    with open(RUTA_JSON, "w", encoding="utf-8") as f:
+        json.dump(productos, f, indent=4, ensure_ascii=False)
 
 def generar_id(productos):
     if not productos:
