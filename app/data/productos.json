@@ -1,1 +1,26 @@
-[]
+[
+    {
+        "id": "CODINV01",
+        "nombre": "Manzana",
+        "stock": 100,
+        "precio": 2.5
+    },
+    {
+        "id": "CODINV02",
+        "nombre": "Pera",
+        "stock": 200,
+        "precio": 3.5
+    },
+    {
+        "id": "CODINV03",
+        "nombre": "Sandia",
+        "stock": 100,
+        "precio": 10.0
+    },
+    {
+        "id": "CODINV04",
+        "nombre": "Melocoton",
+        "stock": 300,
+        "precio": 5.0
+    }
+]

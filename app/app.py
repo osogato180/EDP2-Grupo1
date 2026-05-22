@@ -5,11 +5,12 @@ import redis
 import pika
 import smtplib
 from email.mime.text import MIMEText
+from prometheus_client import Counter, Gauge, start_http_server
 
 # ===============================
 # CONFIGURACIÓN
 # ===============================
-RUTA_JSON = "data/productos.json"
+DATA_FILE = "data/productos.json"
 STOCK_MINIMO = 5
 
 REDIS_HOST = "redis"
@@ -22,19 +23,51 @@ MAILHOG_HOST = "mailhog"
 MAILHOG_PORT = 1025
 
 # ===============================
+# PROMETHEUS
+# ===============================
+try:
+    start_http_server(8001)
+except OSError:
+    pass  # evita error si el puerto ya está en uso
+
+productos_creados = Counter(
+    "productos_creados_total",
+    "Cantidad total de productos creados"
+)
+
+productos_editados = Counter(
+    "productos_editados_total",
+    "Cantidad total de productos editados"
+)
+
+productos_eliminados = Counter(
+    "productos_eliminados_total",
+    "Cantidad total de productos eliminados"
+)
+
+stock_bajo = Gauge(
+    "productos_stock_bajo",
+    "Cantidad de productos con stock bajo"
+)
+
+# ===============================
 # REDIS
 # ===============================
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+redis_client = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True
+)
 
 # ===============================
 # UTILIDADES
 # ===============================
 def cargar_productos():
-    if not os.path.exists(RUTA_JSON):
+    if not os.path.exists(DATA_FILE):
         return []
 
     try:
-        with open(RUTA_JSON, "r", encoding="utf-8") as f:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
             contenido = f.read().strip()
             if not contenido:
                 return []
@@ -43,7 +76,8 @@ def cargar_productos():
         return []
 
 def guardar_productos(productos):
-    with open(RUTA_JSON, "w", encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(productos, f, indent=4, ensure_ascii=False)
 
 def generar_id(productos):
@@ -59,19 +93,36 @@ def obtener_productos_cache():
     data = redis_client.get("productos")
     return json.loads(data) if data else None
 
+def actualizar_metrica_stock(productos):
+    stock_bajo.set(len([p for p in productos if p["stock"] <= STOCK_MINIMO]))
+
 # ===============================
-# RABBIT + MAIL
+# RABBITMQ + MAILHOG
 # ===============================
 def enviar_alerta_stock(producto):
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBIT_HOST))
-    channel = connection.channel()
-    channel.queue_declare(queue=QUEUE_NAME)
+    try:
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=RABBIT_HOST)
+        )
+        channel = connection.channel()
+        channel.queue_declare(queue=QUEUE_NAME)
 
-    mensaje = f"⚠️ Stock bajo\nProducto: {producto['nombre']}\nStock: {producto['stock']}"
-    channel.basic_publish(exchange="", routing_key=QUEUE_NAME, body=mensaje)
-    connection.close()
+        mensaje = (
+            f"⚠️ STOCK BAJO\n"
+            f"ID: {producto['id']}\n"
+            f"Producto: {producto['nombre']}\n"
+            f"Stock: {producto['stock']}"
+        )
 
-    enviar_correo(mensaje)
+        channel.basic_publish(
+            exchange="",
+            routing_key=QUEUE_NAME,
+            body=mensaje
+        )
+        connection.close()
+        enviar_correo(mensaje)
+    except Exception:
+        pass
 
 def enviar_correo(mensaje):
     msg = MIMEText(mensaje)
@@ -85,8 +136,12 @@ def enviar_correo(mensaje):
 # ===============================
 # STREAMLIT
 # ===============================
-st.set_page_config(page_title="Inventario", layout="wide")
-st.title("📦 Sistema de Inventario")
+st.set_page_config(
+    page_title="Sistema de Inventario",
+    layout="wide"
+)
+
+st.title("📦 Sistema de Inventario en la Nube")
 
 # ===============================
 # CARGA DE DATOS
@@ -96,15 +151,17 @@ if productos is None:
     productos = cargar_productos()
     cachear_productos(productos)
 
+actualizar_metrica_stock(productos)
+
 # ===============================
 # AGREGAR PRODUCTO
 # ===============================
 st.header("➕ Agregar producto")
 
 with st.form("form_agregar"):
-    nombre = st.text_input("Nombre")
-    stock = st.number_input("Stock", min_value=0)
-    precio = st.number_input("Precio", min_value=0.0)
+    nombre = st.text_input("Nombre del producto")
+    stock = st.number_input("Stock", min_value=0, step=1)
+    precio = st.number_input("Precio", min_value=0.0, step=0.1)
     submit = st.form_submit_button("Agregar")
 
     if submit:
@@ -114,26 +171,31 @@ with st.form("form_agregar"):
             "stock": stock,
             "precio": precio
         }
+
         productos.append(nuevo)
         guardar_productos(productos)
         cachear_productos(productos)
 
+        productos_creados.inc()
+        actualizar_metrica_stock(productos)
+
         if stock <= STOCK_MINIMO:
             enviar_alerta_stock(nuevo)
 
-        st.success("Producto agregado correctamente")
+        st.success("✅ Producto agregado correctamente")
         st.rerun()
 
 # ===============================
 # BUSCAR PRODUCTO
 # ===============================
 st.header("🔍 Buscar producto")
-busqueda = st.text_input("Buscar por nombre o ID")
+
+busqueda = st.text_input("Buscar por ID o nombre")
 
 productos_filtrados = [
     p for p in productos
-    if busqueda.lower() in p["nombre"].lower()
-    or busqueda.lower() in p["id"].lower()
+    if busqueda.lower() in p["id"].lower()
+    or busqueda.lower() in p["nombre"].lower()
 ]
 
 # ===============================
@@ -141,42 +203,56 @@ productos_filtrados = [
 # ===============================
 st.header("✏️ Editar / 🗑 Eliminar producto")
 
-ids = [p["id"] for p in productos]
-producto_id = st.selectbox("Selecciona un producto (CODINV)", ids)
+if productos:
+    ids = [p["id"] for p in productos]
+    producto_id = st.selectbox("Selecciona un producto (CODINV)", ids)
 
-producto = next(p for p in productos if p["id"] == producto_id)
+    producto = next(p for p in productos if p["id"] == producto_id)
 
-nuevo_nombre = st.text_input("Nombre", producto["nombre"])
-nuevo_stock = st.number_input("Stock", min_value=0, value=producto["stock"])
-nuevo_precio = st.number_input("Precio", min_value=0.0, value=producto["precio"])
+    nuevo_nombre = st.text_input("Nombre", producto["nombre"])
+    nuevo_stock = st.number_input(
+        "Stock", min_value=0, value=producto["stock"], step=1
+    )
+    nuevo_precio = st.number_input(
+        "Precio", min_value=0.0, value=producto["precio"], step=0.1
+    )
 
-col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-with col1:
-    if st.button("💾 Guardar cambios", key="editar"):
-        producto["nombre"] = nuevo_nombre
-        producto["stock"] = nuevo_stock
-        producto["precio"] = nuevo_precio
+    with col1:
+        if st.button("💾 Guardar cambios", key="editar"):
+            producto["nombre"] = nuevo_nombre
+            producto["stock"] = nuevo_stock
+            producto["precio"] = nuevo_precio
 
-        guardar_productos(productos)
-        cachear_productos(productos)
+            guardar_productos(productos)
+            cachear_productos(productos)
 
-        if nuevo_stock <= STOCK_MINIMO:
-            enviar_alerta_stock(producto)
+            productos_editados.inc()
+            actualizar_metrica_stock(productos)
 
-        st.success("Producto actualizado")
-        st.rerun()
+            if nuevo_stock <= STOCK_MINIMO:
+                enviar_alerta_stock(producto)
 
-with col2:
-    if st.button("🗑 Eliminar producto", key="eliminar"):
-        productos.remove(producto)
-        guardar_productos(productos)
-        cachear_productos(productos)
-        st.warning("Producto eliminado")
-        st.rerun()
+            st.success("✏️ Producto actualizado")
+            st.rerun()
+
+    with col2:
+        if st.button("🗑 Eliminar producto", key="eliminar"):
+            productos.remove(producto)
+            guardar_productos(productos)
+            cachear_productos(productos)
+
+            productos_eliminados.inc()
+            actualizar_metrica_stock(productos)
+
+            st.warning("🗑 Producto eliminado")
+            st.rerun()
+else:
+    st.info("No hay productos registrados")
 
 # ===============================
-# TABLA DE PRODUCTOS
+# TABLA
 # ===============================
 st.header("📋 Lista de productos")
 st.dataframe(productos_filtrados)

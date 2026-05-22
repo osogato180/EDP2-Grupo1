@@ -2,6 +2,6 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: "streamlit_app"
+  - job_name: "inventario_app"
     static_configs:
-      - targets: ["app:8501"]
+      - targets: ["app:8001"]
