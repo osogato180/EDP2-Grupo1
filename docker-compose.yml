@@ -12,9 +12,17 @@ services:
 
   redis:
     image: redis:7
-    container_name: redis_cache
+
+  rabbitmq:
+    image: rabbitmq:3-management
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8025:8025"
 
   app:
     build: .
@@ -26,10 +34,17 @@ services:
       DB_USER: admin
       DB_PASSWORD: admin123
       REDIS_HOST: redis
-      REDIS_PORT: 6379
     depends_on:
       - db
       - redis
+      - rabbitmq
+
+  worker:
+    build: .
+    command: python worker.py
+    depends_on:
+      - rabbitmq
+      - mailhog
 
 volumes:
   postgres_data:
