@@ -1,124 +1,128 @@
 import os
+import smtplib
+from email.message import EmailMessage
 from pathlib import Path
 
 import pandas as pd
 import psycopg2
+import pika
 import streamlit as st
+from prometheus_client import Counter, Gauge, start_http_server
 
-# ---------------------------------
+# ==========================
 # CONFIG
-# ---------------------------------
+# ==========================
 
-UPLOAD_DIR = Path("uploads/productos")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
-# ---------------------------------
-# DB CONNECTION
-# ---------------------------------
+# Prometheus
+start_http_server(8000)
+productos_creados = Counter("productos_creados", "Productos creados")
+stock_critico = Gauge("stock_critico", "Productos con stock bajo")
 
+# DB
 conn = psycopg2.connect(
     host=os.getenv("DB_HOST"),
     database=os.getenv("DB_NAME"),
     user=os.getenv("DB_USER"),
     password=os.getenv("DB_PASSWORD")
 )
-
 cur = conn.cursor()
 
-# ---------------------------------
+# RabbitMQ
+rabbit_conn = pika.BlockingConnection(
+    pika.ConnectionParameters(host="rabbitmq")
+)
+channel = rabbit_conn.channel()
+channel.queue_declare(queue="alertas_stock")
+
+# ==========================
 # TABLE
-# ---------------------------------
+# ==========================
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS inventario (
+CREATE TABLE IF NOT EXISTS productos (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(100),
-    precio NUMERIC(10,2),
-    estado VARCHAR(20),
-    imagen TEXT
+    stock INT,
+    stock_min INT,
+    imagen VARCHAR(200)
 )
 """)
-
 conn.commit()
 
-# ---------------------------------
-# SAFE IMAGE HANDLER
-# ---------------------------------
-
-def mostrar_imagen_segura(ruta):
-    if not ruta:
-        return False
-    if str(ruta).lower() == "none":
-        return False
-    path = Path(ruta)
-    if not path.exists():
-        return False
-    st.image(str(path), width=250)
-    return True
-
-# ---------------------------------
+# ==========================
 # UI
-# ---------------------------------
+# ==========================
 
-st.set_page_config(page_title="Inventario Cloud", layout="wide")
-st.title("☁️ Plataforma Cloud de Inventario Inteligente")
-st.caption("Caso real de transformación digital con arquitectura escalable")
+st.set_page_config(page_title="Sistema Inteligente de Inventario", layout="wide")
+st.title("📦 Sistema Inteligente de Inventario Cloud")
 
-tab1, tab2, tab3 = st.tabs([
-    "📦 Registro",
-    "📊 Inventario",
-    "🖼️ Evidencias"
-])
+# ==========================
+# FORM CREAR
+# ==========================
 
-# =================================
-# REGISTRO
-# =================================
+st.header("➕ Registrar producto")
 
-with tab1:
-    with st.form("form_registro"):
-        nombre = st.text_input("Producto")
-        precio = st.number_input("Precio", min_value=0.0)
-        estado = st.selectbox("Estado", ["Disponible", "Agotado"])
-        imagen = st.file_uploader("Imagen (opcional)", type=["png", "jpg", "jpeg"])
-        guardar = st.form_submit_button("Guardar")
+with st.form("crear_producto", clear_on_submit=True):
+    nombre = st.text_input("Nombre del producto")
+    stock = st.number_input("Stock actual", min_value=0)
+    stock_min = st.number_input("Stock mínimo", min_value=0)
+    imagen_file = st.file_uploader("Imagen (opcional)", type=["png", "jpg", "jpeg"])
 
-        if guardar:
-            ruta = None
-            if imagen:
-                ruta = UPLOAD_DIR / imagen.name
-                with open(ruta, "wb") as f:
-                    f.write(imagen.getbuffer())
+    submit = st.form_submit_button("Guardar")
 
-            cur.execute(
-                """
-                INSERT INTO inventario (nombre, precio, estado, imagen)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (nombre, precio, estado, str(ruta) if ruta else None)
+    if submit:
+        imagen_path = None
+
+        if imagen_file:
+            imagen_path = UPLOAD_DIR / imagen_file.name
+            with open(imagen_path, "wb") as f:
+                f.write(imagen_file.getbuffer())
+
+        cur.execute(
+            "INSERT INTO productos (nombre, stock, stock_min, imagen) VALUES (%s,%s,%s,%s)",
+            (nombre, stock, stock_min, str(imagen_path) if imagen_path else None)
+        )
+        conn.commit()
+        productos_creados.inc()
+
+        if stock <= stock_min:
+            stock_critico.inc()
+            channel.basic_publish(
+                exchange="",
+                routing_key="alertas_stock",
+                body=f"Stock bajo para {nombre}"
             )
-            conn.commit()
-            st.success("Producto registrado correctamente")
 
-# =================================
-# INVENTARIO
-# =================================
+        st.success("Producto registrado correctamente")
 
-with tab2:
-    df = pd.read_sql(
-        "SELECT id, nombre, precio, estado FROM inventario ORDER BY id",
-        conn
-    )
-    st.dataframe(df, use_container_width=True)
+# ==========================
+# LISTA
+# ==========================
 
-# =================================
-# EVIDENCIAS
-# =================================
+st.divider()
+st.header("📋 Productos registrados")
 
-with tab3:
-    cur.execute("SELECT nombre, imagen FROM inventario")
-    rows = cur.fetchall()
+df = pd.read_sql("SELECT * FROM productos ORDER BY id", conn)
 
-    for nombre, imagen in rows:
-        st.markdown(f"**{nombre}**")
-        if not mostrar_imagen_segura(imagen):
-            st.info("Sin evidencia visual")
+if not df.empty:
+    for _, row in df.iterrows():
+        col1, col2, col3 = st.columns([2, 2, 1])
+
+        with col1:
+            st.write(f"**{row['nombre']}**")
+            st.write(f"Stock: {row['stock']} | Mín: {row['stock_min']}")
+
+        with col2:
+            if row["imagen"]:
+                st.image(row["imagen"], width=150)
+
+        with col3:
+            if st.button("❌ Eliminar", key=row["id"]):
+                cur.execute("DELETE FROM productos WHERE id=%s", (row["id"],))
+                conn.commit()
+                st.experimental_rerun()
+else:
+    st.info("No hay productos registrados")
