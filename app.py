@@ -35,7 +35,7 @@ def generar_id():
 # =========================
 st.header("➕ Agregar producto")
 
-with st.form("form_producto", clear_on_submit=True):
+with st.form("form_agregar", clear_on_submit=True):
     nombre = st.text_input("Nombre del producto")
     stock = st.number_input("Stock disponible", min_value=0, step=1)
 
@@ -45,13 +45,12 @@ with st.form("form_producto", clear_on_submit=True):
         if nombre.strip() == "":
             st.warning("⚠️ El nombre no puede estar vacío")
         else:
-            nuevo_producto = {
+            productos.append({
                 "id": generar_id(),
                 "nombre": nombre,
                 "stock": stock
-            }
-            productos.append(nuevo_producto)
-            st.success(f"✅ Producto agregado con ID {nuevo_producto['id']}")
+            })
+            st.success("✅ Producto agregado correctamente")
             st.rerun()
 
 # =========================
@@ -73,6 +72,37 @@ if buscar:
             st.info(f"ID: {p['id']} | {p['nombre']} | Stock: {p['stock']}")
     else:
         st.warning("❌ Producto no encontrado")
+
+# =========================
+# EDITAR PRODUCTO
+# =========================
+st.header("✏️ Editar producto")
+
+ids = [p["id"] for p in productos]
+
+if not ids:
+    st.info("No hay productos para editar")
+else:
+    id_seleccionado = st.selectbox("Selecciona el ID del producto", ids)
+
+    producto = next(p for p in productos if p["id"] == id_seleccionado)
+
+    with st.form("form_editar"):
+        nuevo_nombre = st.text_input("Nuevo nombre", value=producto["nombre"])
+        nuevo_stock = st.number_input(
+            "Nuevo stock",
+            min_value=0,
+            step=1,
+            value=producto["stock"]
+        )
+
+        editar = st.form_submit_button("Actualizar producto")
+
+        if editar:
+            producto["nombre"] = nuevo_nombre
+            producto["stock"] = nuevo_stock
+            st.success("✏️ Producto actualizado correctamente")
+            st.rerun()
 
 # =========================
 # LISTAR Y ELIMINAR
