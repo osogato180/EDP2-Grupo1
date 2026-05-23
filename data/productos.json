@@ -1,0 +1,32 @@
+[
+    {
+        "id": "CODINV01",
+        "nombre": "Manzanas",
+        "stock": 100,
+        "precio": 2.5
+    },
+    {
+        "id": "CODINV02",
+        "nombre": "Peras",
+        "stock": 200,
+        "precio": 3.5
+    },
+    {
+        "id": "CODINV03",
+        "nombre": "Naranjas",
+        "stock": 50,
+        "precio": 1.5
+    },
+    {
+        "id": "CODINV04",
+        "nombre": "Uvas",
+        "stock": 1000,
+        "precio": 1.0
+    },
+    {
+        "id": "CODINV05",
+        "nombre": "Sandias",
+        "stock": 80,
+        "precio": 10.5
+    }
+]
