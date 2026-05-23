@@ -260,11 +260,11 @@ if top_precio:
 st.subheader("📡 Monitoreo avanzado (Grafana)")
 
 st.components.v1.iframe(
-    "http://grafana:3000/d-solo/inventario/productos?panelId=1",
+    "http://localhost:3000/goto/cfmw88m76begwf?orgId=1",
     height=400
 )
 
 st.components.v1.iframe(
-    "http://grafana:3000/d-solo/inventario/productos?panelId=2",
+    "http://localhost:3000/goto/cfmw88m76begwf?orgId=2",
     height=400
 )
