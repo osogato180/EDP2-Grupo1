@@ -1,31 +1,47 @@
 version: "3.9"
 
 services:
+  app:
+    build: .
+    container_name: streamlit_app
+    ports:
+      - "8501:8501"
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=db
+      - DB_NAME=inventario
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./data:/app/data
+
   db:
     image: postgres:15
+    container_name: postgres_db
     environment:
       POSTGRES_DB: inventario
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin123
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
     volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
-
-  rabbitmq:
-    image: rabbitmq:3-management
+    container_name: redis_cache
     ports:
-      - "5672:5672"
-      - "15672:15672"
-
-  mailhog:
-    image: mailhog/mailhog
-    ports:
-      - "8025:8025"
+      - "6379:6379"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus
+    container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -34,29 +50,15 @@ services:
       - app
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana
+    container_name: grafana
     ports:
       - "3000:3000"
     depends_on:
       - prometheus
-
-  app:
-    build: .
-    ports:
-      - "8501:8501"
     volumes:
-      - ./app/data:/app/data
-    depends_on:
-      - redis
-      - rabbitmq
-      - mailhog
-
-  worker:
-    build: .
-    command: python worker.py
-    depends_on:
-      - rabbitmq
-      - mailhog
+      - grafana_data:/var/lib/grafana
 
 volumes:
   postgres_data:
+  grafana_data:
