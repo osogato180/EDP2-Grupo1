@@ -217,9 +217,47 @@ st.header("📋 Lista de productos")
 st.dataframe(productos_filtrados)
 
 # ===============================
-# GRAFANA (EMBEBIDO)
+# ANÁLISIS DE INVENTARIO
 # ===============================
 st.header("📊 Análisis de Inventario")
+
+# -------- KPIs --------
+col1, col2, col3, col4 = st.columns(4)
+
+total_productos = len(productos)
+stock_total = sum(p["stock"] for p in productos)
+precio_promedio = (
+    sum(p["precio"] for p in productos) / total_productos
+    if total_productos > 0 else 0
+)
+productos_stock_bajo = len([p for p in productos if p["stock"] <= STOCK_MINIMO])
+
+col1.metric("📦 Total productos", total_productos)
+col2.metric("📉 Stock total", stock_total)
+col3.metric("⚠️ Stock bajo", productos_stock_bajo)
+col4.metric("💰 Precio promedio", f"S/. {precio_promedio:.2f}")
+
+# -------- Tablas y gráficos --------
+st.subheader("⚠️ Productos con stock bajo")
+bajo_stock = [p for p in productos if p["stock"] <= STOCK_MINIMO]
+
+if bajo_stock:
+    st.table(bajo_stock)
+else:
+    st.success("No hay productos con stock bajo")
+
+st.subheader("📈 Productos con mayor stock")
+top_stock = sorted(productos, key=lambda x: x["stock"], reverse=True)[:5]
+if top_stock:
+    st.bar_chart({p["nombre"]: p["stock"] for p in top_stock})
+
+st.subheader("💎 Productos más caros")
+top_precio = sorted(productos, key=lambda x: x["precio"], reverse=True)[:5]
+if top_precio:
+    st.bar_chart({p["nombre"]: p["precio"] for p in top_precio})
+
+# -------- Grafana embebido --------
+st.subheader("📡 Monitoreo avanzado (Grafana)")
 
 st.components.v1.iframe(
     "http://grafana:3000/d-solo/inventario/productos?panelId=1",
