@@ -255,16 +255,3 @@ st.subheader("💎 Productos más caros")
 top_precio = sorted(productos, key=lambda x: x["precio"], reverse=True)[:5]
 if top_precio:
     st.bar_chart({p["nombre"]: p["precio"] for p in top_precio})
-
-# -------- Grafana embebido --------
-st.subheader("📡 Monitoreo avanzado (Grafana)")
-
-st.components.v1.iframe(
-    "http://localhost:3000/goto/cfmw88m76begwf?orgId=1",
-    height=400
-)
-
-st.components.v1.iframe(
-    "http://localhost:3000/goto/cfmw88m76begwf?orgId=2",
-    height=400
-)
