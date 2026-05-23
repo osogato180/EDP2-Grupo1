@@ -2,13 +2,10 @@ import streamlit as st
 import json
 import os
 import redis
-import pika
-import smtplib
-from email.mime.text import MIMEText
-from prometheus_client import Counter, Gauge, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server, REGISTRY
 
 # ===============================
-# CONFIGURACIÓN
+# CONFIGURACIÓN GENERAL
 # ===============================
 DATA_FILE = "data/productos.json"
 STOCK_MINIMO = 5
@@ -16,17 +13,11 @@ STOCK_MINIMO = 5
 REDIS_HOST = "redis"
 REDIS_PORT = 6379
 
-RABBIT_HOST = "rabbitmq"
-QUEUE_NAME = "stock_alerts"
-
-MAILHOG_HOST = "mailhog"
-MAILHOG_PORT = 1025
+PROMETHEUS_PORT = 8000
 
 # ===============================
-# PROMETHEUS (SEGURO PARA STREAMLIT)
+# PROMETHEUS (ANTI DUPLICADOS)
 # ===============================
-from prometheus_client import Counter, Gauge, start_http_server, REGISTRY
-
 def get_or_create_counter(name, description):
     try:
         return Counter(name, description)
@@ -39,9 +30,9 @@ def get_or_create_gauge(name, description):
     except ValueError:
         return REGISTRY._names_to_collectors[name]
 
-# Iniciar servidor una sola vez
+# Iniciar servidor Prometheus solo una vez
 try:
-    start_http_server(8000)
+    start_http_server(PROMETHEUS_PORT)
 except OSError:
     pass
 
@@ -60,7 +51,7 @@ productos_eliminados = get_or_create_counter(
     "Cantidad total de productos eliminados"
 )
 
-stock_bajo = get_or_create_gauge(
+productos_stock_bajo = get_or_create_gauge(
     "productos_stock_bajo",
     "Cantidad de productos con stock bajo"
 )
@@ -84,9 +75,7 @@ def cargar_productos():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             contenido = f.read().strip()
-            if not contenido:
-                return []
-            return json.loads(contenido)
+            return json.loads(contenido) if contenido else []
     except json.JSONDecodeError:
         return []
 
@@ -102,51 +91,16 @@ def generar_id(productos):
     return f"CODINV{str(ultimo + 1).zfill(2)}"
 
 def cachear_productos(productos):
-    redis_client.set("productos", json.dumps(productos))
+    redis_client.set("productos", json.dumps(productos), ex=3600)
 
 def obtener_productos_cache():
     data = redis_client.get("productos")
     return json.loads(data) if data else None
 
 def actualizar_metrica_stock(productos):
-    stock_bajo.set(len([p for p in productos if p["stock"] <= STOCK_MINIMO]))
-
-# ===============================
-# RABBITMQ + MAILHOG
-# ===============================
-def enviar_alerta_stock(producto):
-    try:
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host=RABBIT_HOST)
-        )
-        channel = connection.channel()
-        channel.queue_declare(queue=QUEUE_NAME)
-
-        mensaje = (
-            f"⚠️ STOCK BAJO\n"
-            f"ID: {producto['id']}\n"
-            f"Producto: {producto['nombre']}\n"
-            f"Stock: {producto['stock']}"
-        )
-
-        channel.basic_publish(
-            exchange="",
-            routing_key=QUEUE_NAME,
-            body=mensaje
-        )
-        connection.close()
-        enviar_correo(mensaje)
-    except Exception:
-        pass
-
-def enviar_correo(mensaje):
-    msg = MIMEText(mensaje)
-    msg["Subject"] = "Alerta de Stock Bajo"
-    msg["From"] = "inventario@sistema.com"
-    msg["To"] = "admin@sistema.com"
-
-    with smtplib.SMTP(MAILHOG_HOST, MAILHOG_PORT) as server:
-        server.send_message(msg)
+    productos_stock_bajo.set(
+        len([p for p in productos if p["stock"] <= STOCK_MINIMO])
+    )
 
 # ===============================
 # STREAMLIT
@@ -156,7 +110,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📦 Sistema de Inventario en la Nube")
+st.title("📦 Sistema de Inventario – Tiendita de Don Pepe")
 
 # ===============================
 # CARGA DE DATOS
@@ -174,9 +128,9 @@ actualizar_metrica_stock(productos)
 st.header("➕ Agregar producto")
 
 with st.form("form_agregar", clear_on_submit=True):
-    nombre = st.text_input("Nombre", key="nombre_nuevo")
-    stock = st.number_input("Stock", min_value=0, key="stock_nuevo")
-    precio = st.number_input("Precio", min_value=0.0, key="precio_nuevo")
+    nombre = st.text_input("Nombre")
+    stock = st.number_input("Stock", min_value=0, step=1)
+    precio = st.number_input("Precio", min_value=0.0, step=0.1)
     submit = st.form_submit_button("Agregar")
 
     if submit:
@@ -192,11 +146,9 @@ with st.form("form_agregar", clear_on_submit=True):
         cachear_productos(productos)
 
         productos_creados.inc()
+        actualizar_metrica_stock(productos)
 
-        if stock <= STOCK_MINIMO:
-            enviar_alerta_stock(nuevo)
-
-        st.success("Producto agregado correctamente")
+        st.success("✅ Producto agregado correctamente")
         st.rerun()
 
 # ===============================
@@ -219,17 +171,13 @@ st.header("✏️ Editar / 🗑 Eliminar producto")
 
 if productos:
     ids = [p["id"] for p in productos]
-    producto_id = st.selectbox("Selecciona un producto (CODINV)", ids)
+    producto_id = st.selectbox("Selecciona un producto", ids)
 
     producto = next(p for p in productos if p["id"] == producto_id)
 
     nuevo_nombre = st.text_input("Nombre", producto["nombre"])
-    nuevo_stock = st.number_input(
-        "Stock", min_value=0, value=producto["stock"], step=1
-    )
-    nuevo_precio = st.number_input(
-        "Precio", min_value=0.0, value=producto["precio"], step=0.1
-    )
+    nuevo_stock = st.number_input("Stock", min_value=0, value=producto["stock"], step=1)
+    nuevo_precio = st.number_input("Precio", min_value=0.0, value=producto["precio"], step=0.1)
 
     col1, col2 = st.columns(2)
 
@@ -244,9 +192,6 @@ if productos:
 
             productos_editados.inc()
             actualizar_metrica_stock(productos)
-
-            if nuevo_stock <= STOCK_MINIMO:
-                enviar_alerta_stock(producto)
 
             st.success("✏️ Producto actualizado")
             st.rerun()
@@ -270,3 +215,18 @@ else:
 # ===============================
 st.header("📋 Lista de productos")
 st.dataframe(productos_filtrados)
+
+# ===============================
+# GRAFANA (EMBEBIDO)
+# ===============================
+st.header("📊 Análisis de Inventario")
+
+st.components.v1.iframe(
+    "http://grafana:3000/d-solo/inventario/productos?panelId=1",
+    height=400
+)
+
+st.components.v1.iframe(
+    "http://grafana:3000/d-solo/inventario/productos?panelId=2",
+    height=400
+)
