@@ -28,5 +28,17 @@
         "nombre": "Sandias",
         "stock": 80,
         "precio": 10.5
+    },
+    {
+        "id": "CODINV06",
+        "nombre": "",
+        "stock": 0,
+        "precio": 0.0
+    },
+    {
+        "id": "CODINV07",
+        "nombre": "",
+        "stock": 0,
+        "precio": 0.0
     }
 ]
