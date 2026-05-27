@@ -31,14 +31,8 @@
     },
     {
         "id": "CODINV06",
-        "nombre": "",
+        "nombre": "Melon",
         "stock": 0,
-        "precio": 0.0
-    },
-    {
-        "id": "CODINV07",
-        "nombre": "",
-        "stock": 0,
-        "precio": 0.0
+        "precio": 12.0
     }
 ]
